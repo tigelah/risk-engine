@@ -1,0 +1,25 @@
+server:
+  port: ${SERVER_PORT:8089}
+
+spring:
+  application:
+    name: risk-engine
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+
+risk:
+  max-amount-cents: ${RISK_MAX_AMOUNT_CENTS:500000}
+  blocked-last4: ${RISK_BLOCKED_LAST4:0000,6666}
