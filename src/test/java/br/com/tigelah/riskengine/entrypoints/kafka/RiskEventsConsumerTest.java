@@ -20,7 +20,7 @@ class RiskEventsConsumerTest {
 
     @Test
     void publishes_rejected() {
-        var mapper = new ObjectMapper();
+        var mapper = new ObjectMapper().findAndRegisterModules();
         var uc = new AnalyzeRiskUseCase(new SimpleRiskRules(10, Set.of("0000")));
         var outRef = new AtomicReference<RiskEvaluatedEvent>();
         EventPublisher publisher = outRef::set;

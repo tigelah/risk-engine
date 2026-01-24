@@ -1,10 +1,10 @@
 package br.com.tigelah.riskengine.entrypoints.kafka;
 
+import br.com.tigelah.riskengine.application.usecase.AnalyzeRiskUseCase;
 import br.com.tigelah.riskengine.application.events.RiskEvaluatedEvent;
 import br.com.tigelah.riskengine.application.ports.EventPublisher;
-import br.com.tigelah.riskengine.application.usecase.AnalyzeRiskUseCase;
-import br.com.tigelah.riskengine.entrypoints.kafka.dto.PaymentAuthorizeRequestedEvent;
 import br.com.tigelah.riskengine.infrastructure.messaging.Topics;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,28 +32,49 @@ public class RiskEventsConsumer {
         this.clock = clock;
     }
 
-    @KafkaListener(topics = Topics.PAYMENT_AUTHORIZE_REQUESTED, groupId = "${kafka.consumer.group-id:risk-engine}")
+    @KafkaListener(
+            topics = Topics.PAYMENT_AUTHORIZE_REQUESTED,
+            groupId = "${kafka.consumer.group-id:risk-engine}"
+    )
     public void onMessage(String message) {
         try {
-            var evt = mapper.readValue(message, PaymentAuthorizeRequestedEvent.class);
-            if (evt.correlationId() != null) MDC.put("correlationId", evt.correlationId());
+            JsonNode root = mapper.readTree(message);
 
-            var decision = useCase.execute(evt.amountCents(), evt.panLast4());
+            String type = root.path("type").asText("");
+            if (!Topics.PAYMENT_AUTHORIZE_REQUESTED.equals(type) && !"payment.authorize.requested".equals(type)) {
+                // Se você usa o tópico como hint, mantenha só o equals de cima.
+                log.debug("Ignoring event type={}", type);
+                return;
+            }
+
+            String correlationId = root.path("correlationId").asText(null);
+            if (correlationId != null) MDC.put("correlationId", correlationId);
+
+            UUID paymentId = UUID.fromString(root.path("paymentId").asText());
+            long amountCents = root.path("amountCents").asLong();
+            String panLast4 = root.path("panLast4").asText(null);
+
+            var decision = useCase.execute(amountCents, panLast4);
+
+            String outType = decision.approved()
+                    ? Topics.PAYMENT_RISK_APPROVED
+                    : Topics.PAYMENT_RISK_REJECTED;
 
             var out = new RiskEvaluatedEvent(
                     UUID.randomUUID(),
                     Instant.now(clock),
-                    evt.correlationId(),
-                    decision.approved() ? Topics.PAYMENT_RISK_APPROVED : Topics.PAYMENT_RISK_REJECTED,
-                    evt.paymentId(),
+                    correlationId,
+                    outType,
+                    paymentId,
                     decision.approved(),
                     decision.reason()
             );
 
             publisher.publish(out);
-            log.info("risk_evaluated paymentId={} approved={} reason={}", evt.paymentId(), decision.approved(), decision.reason());
+            log.info("risk_evaluated paymentId={} approved={} reason={}", paymentId, decision.approved(), decision.reason());
+
         } catch (Exception e) {
-            log.error("Failed to consume message: {}", message, e);
+            log.error("Failed to consume risk message: {}", message, e);
         } finally {
             MDC.clear();
         }
