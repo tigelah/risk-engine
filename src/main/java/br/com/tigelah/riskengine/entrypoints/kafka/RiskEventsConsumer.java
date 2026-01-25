@@ -42,7 +42,6 @@ public class RiskEventsConsumer {
 
             String type = root.path("type").asText("");
             if (!Topics.PAYMENT_AUTHORIZE_REQUESTED.equals(type) && !"payment.authorize.requested".equals(type)) {
-                // Se você usa o tópico como hint, mantenha só o equals de cima.
                 log.debug("Ignoring event type={}", type);
                 return;
             }
