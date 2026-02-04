@@ -41,7 +41,7 @@ public class RiskEventsConsumer {
             JsonNode root = mapper.readTree(message);
 
             String type = root.path("type").asText("");
-            if (!Topics.PAYMENT_AUTHORIZE_REQUESTED.equals(type) && !"payment.authorize.requested".equals(type)) {
+            if (!Topics.PAYMENT_AUTHORIZE_REQUESTED.equals(type)) {
                 log.debug("Ignoring event type={}", type);
                 return;
             }
@@ -50,8 +50,14 @@ public class RiskEventsConsumer {
             if (correlationId != null) MDC.put("correlationId", correlationId);
 
             UUID paymentId = UUID.fromString(root.path("paymentId").asText());
-            long amountCents = root.path("amountCents").asLong();
+
+            long amountCents = root.path("amountCents").asLong(0);
+            int installments = root.path("installments").asInt(1);
+
             String panLast4 = root.path("panLast4").asText(null);
+            String accountId = root.path("accountId").asText(null);
+            String userId = root.path("userId").asText(null);
+            String panHash = root.path("panHash").asText(null);
 
             var decision = useCase.execute(amountCents, panLast4);
 
@@ -66,11 +72,18 @@ public class RiskEventsConsumer {
                     outType,
                     paymentId,
                     decision.approved(),
-                    decision.reason()
+                    decision.reason(),
+                    amountCents,
+                    installments,
+                    accountId,
+                    userId,
+                    panHash,
+                    panLast4
             );
 
             publisher.publish(out);
-            log.info("risk_evaluated paymentId={} approved={} reason={}", paymentId, decision.approved(), decision.reason());
+            log.info("risk_evaluated paymentId={} approved={} reason={} installments={}",
+                    paymentId, decision.approved(), decision.reason(), installments);
 
         } catch (Exception e) {
             log.error("Failed to consume risk message: {}", message, e);

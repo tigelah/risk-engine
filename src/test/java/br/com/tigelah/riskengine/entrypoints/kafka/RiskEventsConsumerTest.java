@@ -19,21 +19,44 @@ import static org.junit.jupiter.api.Assertions.*;
 class RiskEventsConsumerTest {
 
     @Test
-    void publishes_rejected() {
+    void publishes_approved_and_propagates_installments_and_context() {
         var mapper = new ObjectMapper().findAndRegisterModules();
-        var uc = new AnalyzeRiskUseCase(new SimpleRiskRules(10, Set.of("0000")));
+        var uc = new AnalyzeRiskUseCase(new SimpleRiskRules(9999, Set.of())); // aprova
         var outRef = new AtomicReference<RiskEvaluatedEvent>();
         EventPublisher publisher = outRef::set;
 
         var clock = Clock.fixed(Instant.parse("2030-01-01T00:00:00Z"), ZoneOffset.UTC);
         var consumer = new RiskEventsConsumer(mapper, uc, publisher, clock);
 
-        var msg = String.format("{\"eventId\":\"%s\",\"occurredAt\":\"2030-01-01T00:00:00Z\",\"correlationId\":\"c1\",\"type\":\"payment.authorize.requested\",\"paymentId\":\"%s\",\"amountCents\":11,\"panLast4\":\"1111\"}",
-                UUID.randomUUID(), UUID.randomUUID());
+        var paymentId = UUID.randomUUID();
+        var accountId = UUID.randomUUID();
+
+        var msg = """
+          {
+            "eventId":"%s",
+            "occurredAt":"2030-01-01T00:00:00Z",
+            "correlationId":"c1",
+            "type":"payment.authorize.requested",
+            "paymentId":"%s",
+            "amountCents":100,
+            "currency":"BRL",
+            "installments":6,
+            "accountId":"%s",
+            "userId":"user-1",
+            "panHash":"h1",
+            "panLast4":"1111"
+          }
+        """.formatted(UUID.randomUUID(), paymentId, accountId);
 
         consumer.onMessage(msg);
 
         assertNotNull(outRef.get());
-        assertFalse(outRef.get().approved());
+        assertTrue(outRef.get().approved());
+        assertEquals(6, outRef.get().installments());
+        assertEquals(accountId.toString(), outRef.get().accountId());
+        assertEquals("user-1", outRef.get().userId());
+        assertEquals("h1", outRef.get().panHash());
+        assertEquals("1111", outRef.get().panLast4());
+        assertEquals(100L, outRef.get().amountCents());
     }
 }

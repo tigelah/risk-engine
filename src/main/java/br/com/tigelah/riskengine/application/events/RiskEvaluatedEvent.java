@@ -10,5 +10,11 @@ public record RiskEvaluatedEvent(
         String type,
         UUID paymentId,
         boolean approved,
-        String reason
+        String reason,
+        long amountCents,
+        Integer installments,
+        String accountId,
+        String userId,
+        String panHash,
+        String panLast4
 ) { }
